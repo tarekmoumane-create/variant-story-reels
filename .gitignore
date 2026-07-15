@@ -1,0 +1,23 @@
+# secrets
+.env
+
+# media — too big for git
+raw_gameplay/
+gameplay/
+downloads/
+finals/
+work/
+music/
+*.mp4
+*.mov
+*.MP4
+*.MOV
+*.wav
+*.mp3
+
+# python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
