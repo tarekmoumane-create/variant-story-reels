@@ -13,8 +13,12 @@ import subprocess
 import sys
 
 MIN_SEG = 4.0       # keep intervals at least this long
-YAVG_MIN = 80.0     # average luma below this (0-255) = dark screen or app menu
-                    # (Variant gameplay is bright ~100+; menus measure ~60-75)
+YAVG_MIN = float(os.environ.get("YAVG_MIN", "50"))
+                    # average luma below this (0-255) = near-black loading screen.
+                    # Some Variant games are dark (~60), so this floor is low and
+                    # we lean on freezedetect to strip static menus. Override with
+                    # the YAVG_MIN env var (raise it for glarey footage, 0 = off).
+VIDEO_EXTS = (".mp4", ".mov", ".m4v")
 SAMPLE_FPS = 2      # brightness samples per second
 FREEZE_NOISE = "0.0015"
 FREEZE_DUR = 1.5    # static for this long = menu/idle
@@ -101,7 +105,7 @@ def main():
             os.remove(os.path.join(out_dir, f))
     n = 0
     clips = sorted(f for f in os.listdir(raw_dir)
-                   if f.lower().endswith(".mp4") and not f.startswith("."))
+                   if f.lower().endswith(VIDEO_EXTS) and not f.startswith("."))
     for clip in clips:
         path = os.path.join(raw_dir, clip)
         dur = probe_duration(path)

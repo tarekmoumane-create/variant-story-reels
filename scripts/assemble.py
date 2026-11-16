@@ -19,6 +19,30 @@ GAMEPLAY_DIR = os.environ.get(
 )
 CARD_Y = 640  # vertical position of the question card
 
+GEMINI_VOICES = {"Charon", "Fenrir", "Kore"}
+
+
+def load_project_env():
+    """Load this project's .env for any keys not already in the environment.
+
+    Lets celeb reels find ELEVENLABS_* without the caller sourcing it, while
+    never clobbering a real GEMINI_API_KEY sourced from elsewhere.
+    """
+    path = os.path.join(os.path.dirname(HERE), ".env")
+    if not os.path.exists(path):
+        return
+    for line in open(path):
+        line = line.split("#", 1)[0].strip()
+        if "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k, v = k.strip(), v.strip()
+        if k and k not in os.environ:
+            os.environ[k] = v
+
+
+load_project_env()
+
 
 def run(cmd, **kw):
     print("+", " ".join(str(c) for c in cmd)[:160])
@@ -48,7 +72,16 @@ def main():
     seed = int(sys.argv[3]) if len(sys.argv) > 3 else 0
     story = json.load(open(story_path))
     question, body = story["question"].strip(), story["story"].strip()
-    voice = story.get("voice", "Charon")
+    # Celeb drama reels default to the ElevenLabs woman's voice; Reddit
+    # stories default to Gemini/Charon. Per-story "tts"/"voice" still win.
+    is_celeb = story.get("card_name") == "Celebrity Tea"
+    el_voice = os.environ.get("ELEVENLABS_VOICE_ID")
+    engine = (story.get("tts") or ("elevenlabs" if is_celeb else "gemini")).lower()
+    voice = story.get("voice") or (el_voice if engine == "elevenlabs" else "Charon")
+    # Guard: a stale celeb template with a Gemini voice name on the EL engine.
+    if engine == "elevenlabs" and voice in GEMINI_VOICES and el_voice:
+        voice = el_voice
+    mirror = bool(story.get("mirror", False))
 
     work = tempfile.mkdtemp(prefix="reel_")
     full_text = question + "\n\n" + body
@@ -57,7 +90,8 @@ def main():
     txt = os.path.join(work, "full.txt")
     open(txt, "w").write(full_text)
     wav_raw = os.path.join(work, "vo_raw.wav")
-    run(["python3", f"{HERE}/tts.py", txt, wav_raw, voice])
+    run(["python3", f"{HERE}/tts.py", txt, wav_raw, voice],
+        env={**os.environ, "TTS_ENGINE": engine})
     speed = float(story.get("speed", 1.3))
     wav = os.path.join(work, "vo.wav")
     run(["ffmpeg", "-y", "-v", "error", "-i", wav_raw,
@@ -101,8 +135,9 @@ def main():
         inputs += ["-i", c]
     inputs += ["-i", wav, "-i", card]
     n = len(picked)
+    flip = ",hflip" if mirror else ""
     vparts = "".join(
-        f"[{j}:v]scale=1080:-2,crop=1080:1920:0:(ih-1920)/2,fps=30,setsar=1[v{j}];"
+        f"[{j}:v]scale=1080:-2,crop=1080:1920:0:(ih-1920)/2{flip},fps=30,setsar=1[v{j}];"
         for j in range(n)
     )
     concat = "".join(f"[v{j}]" for j in range(n)) + f"concat=n={n}:v=1:a=0[base];"
